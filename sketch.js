@@ -105,7 +105,7 @@ class Cell {
     unrevealed.delete(this);
     this.revealed = true;
     this.neighbours.forEach((neighbour) => neighbour.unrevealedCount--);
-    if (this.hasBomb) return;
+    if (this.hasBomb) return die();
     if (!this.bombCount)
       this.neighbours.forEach((neighbour) => neighbour.reveal(visited));
   }
@@ -201,9 +201,6 @@ function mousePressed(event) {
       if (gameState == "START") placeBombs(12, clicked.getCells());
       if (mouseButton == LEFT) {
         clicked.reveal();
-        if (clicked.hasBomb) {
-          return die();
-        }
         if (unrevealed.size == bombs.length) {
           return win();
         }
