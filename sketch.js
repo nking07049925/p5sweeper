@@ -1,6 +1,8 @@
 //@ts-check
 /** @typedef {import("p5/global")} p5global */
+/** @typedef {import("p5")} p5 */
 /** @typedef {import("p5").Vector} Vector */
+/** @typedef {import("p5").Graphics} Graphics */
 
 const cellSize = 50;
 
@@ -22,14 +24,17 @@ class Cell {
     this.neighbours = new Set();
     /** @type {number} */
     this.bombCount = 0;
-    /** @private @type {number} */
+    /** @type {number} */
     this.flagCount = 0;
-    /** @private @type {number} */
+    /** @type {number} */
     this.unrevealedCount = 0;
     /** @type {boolean} */
     this.revealed = false;
     /** @type {boolean} */
     this.flagged = false;
+    this.revealStart = -animationLength;
+    this.revealAngle = 0;
+    this.revealSides = [];
   }
 
   display() {
@@ -47,19 +52,9 @@ class Cell {
     rect(x, y, cellSize, cellSize);
     const center = this.pos.copy().add(half, half);
     if (!this.revealed) {
-      rect(x + size * 0.1, y + size * 0.1, size * 0.8, size * 0.8);
+      // rect(x + size * 0.1, y + size * 0.1, size * 0.8, size * 0.8);
       if (this.flagged) {
-        noStroke();
-        fill(brightColor);
-        const r = size * 0.2;
-        triangle(
-          x + half - r + r / 6,
-          y + half,
-          x + half + r / 2 + r / 6,
-          y + half - (r * 3) / 2 / sqrt(3),
-          x + half + r / 2 + r / 6,
-          y + half + (r * 3) / 2 / sqrt(3)
-        );
+        drawFlag(this.pos, size);
       }
       return;
     }
@@ -68,7 +63,26 @@ class Cell {
       fill(brightColor);
       drawBomb(center, size / 4);
     } else {
-      drawDie(this.bombCount, center, size / 4);
+      if (
+        frameCount < this.revealStart ||
+        frameCount > this.revealStart + animationLength
+      ) {
+        drawDie(
+          frameCount < this.revealStart ? 0 : this.bombCount,
+          center,
+          size / 4
+        );
+      } else {
+        rotateCube(
+          this.revealStart,
+          createVector(size / 2, size / 2, -size / 2).add(this.pos),
+          this.revealAngle,
+          size / 2,
+          0,
+          this.bombCount,
+          this.revealSides
+        );
+      }
     }
   }
 
@@ -93,21 +107,20 @@ class Cell {
     });
   }
 
-  reveal(visited = new Set()) {
-    if (this.flagged || visited.has(this)) return;
-    visited.add(this);
-
-    if (this.bombCount && this.flagCount == this.bombCount) {
-      this.neighbours.forEach((neighbour) => neighbour.reveal(visited));
+  /** @type {(frameStart: number) => void} */
+  reveal(frameStart) {
+    if (this.flagged || this.revealed) {
+      return;
     }
-    if (this.revealed) return;
 
     unrevealed.delete(this);
     this.revealed = true;
+    this.revealStart = frameStart;
+    this.revealAngle = random(0, TWO_PI);
+    this.revealSides = shuffle(
+      [1, 2, 3, 4, 5, 6].filter((i) => i != this.bombCount)
+    );
     this.neighbours.forEach((neighbour) => neighbour.unrevealedCount--);
-    if (this.hasBomb) return;
-    if (!this.bombCount)
-      this.neighbours.forEach((neighbour) => neighbour.reveal(visited));
   }
 
   /**
@@ -116,9 +129,9 @@ class Cell {
   flag(direct) {
     if (this.revealed) {
       if (this.unrevealedCount == this.bombCount) {
-        this.neighbours.forEach(
-          (neighbour) => !neighbour.revealed && neighbour.flag()
-        );
+        this.neighbours.forEach((neighbour) => {
+          if (!neighbour.revealed) neighbour.flag();
+        });
       }
       return;
     }
@@ -152,12 +165,19 @@ let flagged = new Set();
 const countX = 10;
 const countY = 10;
 
+/** @type {Graphics} */
+let cubeTexture;
+const sideTextureSize = cellSize;
+
 /**
  * p5js setup
  */
 function setup() {
   createCanvas(windowWidth, windowHeight, WEBGL);
   textAlign(CENTER, CENTER);
+  textureMode(NORMAL);
+
+  generateCubeTexture();
 
   randomSeed(1);
 
@@ -189,6 +209,33 @@ function draw() {
   }
   cells.forEach((cell) => cell.display());
   if (gameState == "DEAD") drawSkull();
+  if (gameState == "WIN") text("u da winer", 0, 0);
+}
+
+/** @type {(origin: Cell) => void} */
+function revealCells(origin) {
+  /** @typedef {{ frame: number; cell: Cell }} VisitInfo*/
+  /** @type {VisitInfo[]} */
+  const toVisit = [{ cell: origin, frame: frameCount }];
+  /** @type {Set<Cell>} */
+  const visited = new Set();
+  while (toVisit.length) {
+    const current = toVisit.shift();
+    if (!current) break;
+    const { cell, frame } = current;
+    visited.add(cell);
+    cell.reveal(frame);
+    if (!cell.bombCount || cell.flagCount == cell.bombCount) {
+      cell.neighbours.forEach(
+        (neighbour) =>
+          !visited.has(neighbour) &&
+          toVisit.push({
+            frame: frame + cell.pos.dist(neighbour.pos) / 4,
+            cell: neighbour,
+          })
+      );
+    }
+  }
 }
 
 /**
@@ -200,7 +247,8 @@ function mousePressed(event) {
     if (clicked) {
       if (gameState == "START") placeBombs(12, clicked.getCells());
       if (mouseButton == LEFT) {
-        clicked.reveal();
+        revealCells(clicked);
+
         if (clicked.hasBomb) {
           return die();
         }
@@ -222,6 +270,94 @@ function mouseMoved() {
 
 function mouseDragged() {
   hovered = findClicked(mouseX, mouseY);
+}
+
+const animationLength = 50;
+const rotationCount = 1;
+
+/** @type {(frameStart: number, pos: Vector, angle: number, size: number, startIndex: number, endIndex: number, sideIndices: number[]) => void} */
+function rotateCube(
+  frameStart,
+  pos,
+  angle,
+  size,
+  startIndex,
+  endIndex,
+  sideIndices
+) {
+  push();
+  const frame = constrain(frameCount - frameStart, 0, animationLength);
+  const bounceOffset = abs(sin((frame / (animationLength * 2)) * TWO_PI));
+  translate(pos.x, pos.y, pos.z + 150 * bounceOffset);
+  rotateZ(angle);
+  const anglePos = 1 - cos((frame / (animationLength * 2)) * TWO_PI);
+  rotateX(rotationCount * TWO_PI * anglePos);
+  rotateZ(-angle);
+  drawCube(size * (1 - bounceOffset / 3), [
+    frame < animationLength / 2 ? startIndex : endIndex,
+    ...sideIndices,
+  ]);
+  pop();
+}
+
+function generateCubeTexture() {
+  const graphics = createGraphics(
+    sideTextureSize * 3,
+    sideTextureSize * 3,
+    WEBGL
+  );
+  cubeTexture = graphics;
+  graphics.background(0);
+  for (let i = 0; i < 9; i++) {
+    const x = sideTextureSize * ((i % 3) - 1);
+    const y = sideTextureSize * (Math.floor(i / 3) - 1);
+    drawDie(i, createVector(x, y), sideTextureSize / 4, graphics);
+    graphics.noFill();
+    graphics.stroke(255);
+    graphics.rect(
+      x - sideTextureSize / 2,
+      y - sideTextureSize / 2,
+      sideTextureSize,
+      sideTextureSize
+    );
+  }
+}
+
+const cubeSides = [
+  [0, 1],
+  [1, 0],
+  [1, 2],
+  [2, 1],
+  [0, 2],
+  [2, 0],
+];
+
+const sidePoints = [
+  [-1, -1],
+  [1, -1],
+  [1, 1],
+  [-1, 1],
+];
+
+/** @type {(size: number, sideIndices: number[]) => void} */
+function drawCube(size, sideIndices) {
+  texture(cubeTexture);
+  beginShape(QUADS);
+  for (let i = 0; i < 6; i++) {
+    const [xi, yi] = cubeSides[i];
+    const dir = xi < yi ? size : -size;
+    for (const [x, y] of sidePoints) {
+      /** @type {[number, number, number]} */
+      const coords = [dir, dir, dir];
+      coords[xi] = x * size;
+      coords[yi] = y * size;
+      const sideIndex = sideIndices[i];
+      const sideX = (sideIndex % 3) / 3 + 1 / 6;
+      const sideY = Math.floor(sideIndex / 3) / 3 + 1 / 6;
+      vertex(...coords, sideX + x / 6, sideY + y / 6);
+    }
+  }
+  endShape();
 }
 
 /**
@@ -334,17 +470,21 @@ const dies = [
 
 /**
  * Render a die face with a specified value 0-9
- * @type {(num: number, pos: Vector, size: number) => void}
+ * @type {(num: number, pos: Vector, size: number, graphics?: Graphics) => void}
  */
-function drawDie(num, pos, size) {
+function drawDie(num, pos, size, graphics) {
+  /** @type {Graphics | typeof globalThis} */
+  const renderer = graphics ?? this;
   if (num > 9) num = 9;
-  noStroke();
-  fill(brightColor);
+  renderer.noStroke();
+  renderer.fill(brightColor);
   if (num % 2 == 1) {
-    circle(pos.x, pos.y, 10);
+    renderer.circle(pos.x, pos.y, 10);
   }
   for (let i = 0; i <= num / 2; i++) {
-    dies[i].forEach(([x, y]) => circle(pos.x + x * size, pos.y + y * size, 10));
+    dies[i].forEach(([x, y]) =>
+      renderer.circle(pos.x + x * size, pos.y + y * size, 10)
+    );
   }
 }
 
@@ -356,12 +496,29 @@ function drawBomb(pos, size) {
   beginShape();
   for (let i = 0; i < 16; i++) {
     const angle = map(i, 0, 16, 0, TWO_PI);
-    const { x, y } = createVector(size * (0.5 + 0.5 * (i % 2 ? 0 : 1)))
+    const { x, y } = createVector(size * (0.5 + 0.5 * (i % 2)))
       .setHeading(angle)
       .add(pos);
     vertex(x, y);
   }
   endShape("close");
+}
+
+/** @type {(pos: Vector, size: number) => void} */
+function drawFlag(pos, size) {
+  noStroke();
+  fill(brightColor);
+  const half = size / 2;
+  const r = size * 0.2;
+  const { x, y } = pos;
+  triangle(
+    x + half - r + r / 6,
+    y + half,
+    x + half + r / 2 + r / 6,
+    y + half - (r * 3) / 2 / sqrt(3),
+    x + half + r / 2 + r / 6,
+    y + half + (r * 3) / 2 / sqrt(3)
+  );
 }
 
 function drawSkull() {
