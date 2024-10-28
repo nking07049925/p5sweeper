@@ -224,8 +224,10 @@ function revealCells(origin) {
     if (!current) break;
     const { cell, frame } = current;
     visited.add(cell);
-    cell.reveal(frame);
-    if (!cell.bombCount || cell.flagCount == cell.bombCount) {
+    if (
+      (!cell.bombCount && !cell.revealed) ||
+      (cell.bombCount && cell.flagCount == cell.bombCount)
+    ) {
       cell.neighbours.forEach(
         (neighbour) =>
           !visited.has(neighbour) &&
@@ -235,6 +237,7 @@ function revealCells(origin) {
           })
       );
     }
+    cell.reveal(frame);
   }
 }
 
