@@ -197,8 +197,6 @@ function setup() {
 
   generateCubeTexture();
 
-  randomSeed(1);
-
   generateCells();
 }
 /**
