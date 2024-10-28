@@ -285,7 +285,11 @@ function mousePressed(event) {
   if (!["DEAD", "WIN"].includes(gameState)) {
     const clicked = findClicked(mouseX, mouseY);
     if (clicked) {
-      if (gameState == "START") placeBombs(12, clicked.getCells());
+      if (gameState == "START") {
+        placeBombs(12, clicked.getCells());
+        revealCells(clicked);
+        return;
+      }
       if (mouseButton == LEFT) {
         revealCells(clicked);
 
