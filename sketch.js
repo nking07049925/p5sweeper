@@ -61,7 +61,7 @@ class Cell {
     rect(x, y, cellSize, cellSize);
     const center = this.pos.copy().add(half, half);
     if (!this.revealed) {
-      // rect(x + size * 0.1, y + size * 0.1, size * 0.8, size * 0.8);
+      rect(x + size * 0.1, y + size * 0.1, size * 0.8, size * 0.8);
       if (this.flagged) {
         drawFlag(this.pos, size);
       }
@@ -77,9 +77,8 @@ class Cell {
           this.revealStart,
           createVector(size / 2, size / 2, -size / 2).add(this.pos),
           this.revealAngle,
-          size / 2,
-          0,
-          this.bombCount,
+          [size * 0.4, size * 0.5],
+          [0, this.bombCount],
           this.revealSides
         );
       } else if (inAnimation(this.bumpStart)) {
@@ -90,6 +89,8 @@ class Cell {
           this.bombCount
         );
       } else {
+        if (frameCount < this.revealStart)
+          rect(x + size * 0.1, y + size * 0.1, size * 0.8, size * 0.8);
         drawDie(
           frameCount < this.revealStart ? 0 : this.bombCount,
           center,
@@ -224,17 +225,16 @@ function draw() {
   }
   cells.forEach((cell) => cell.display());
   if (gameState == "DEAD") drawSkull();
-  if (gameState == "WIN") text("u da winer", 0, 0);
+  if (gameState == "WIN") drawWin();
 }
 
 /** @type {(cell: Cell) => boolean} */
 function shouldPropagate(cell) {
-  // skip flagged
   if (cell.flagged) return false;
-  // reveal neighbours only for empty cells
-  if (!cell.revealed) return !cell.bombCount;
-  // propagate via chording for cells with flag count
-  return !!cell.bombCount && cell.flagCount == cell.bombCount;
+  return (
+    (!cell.revealed && !cell.bombCount) ||
+    (!!cell.bombCount && cell.flagCount == cell.bombCount)
+  );
 }
 
 /** @type {(cell: Cell) => boolean} */
@@ -312,28 +312,27 @@ function mouseDragged() {
 const animationLength = 50;
 const rotationCount = 1;
 
-/** @type {(frameStart: number, pos: Vector, angle: number, size: number, startIndex: number, endIndex: number, sideIndices: number[]) => void} */
+/** @type {(frameStart: number, pos: Vector, angle: number, sizes: [startSize: number, endSize: number], indices: [startIndex: number, endIndex: number], sideIndices: number[]) => void} */
 function rotateCube(
   frameStart,
   pos,
   angle,
-  size,
-  startIndex,
-  endIndex,
+  [startSize, endSize],
+  [startIndex, endIndex],
   sideIndices
 ) {
   push();
   const frame = constrain(frameCount - frameStart, 0, animationLength);
   const bounceOffset = abs(sin((frame / (animationLength * 2)) * TWO_PI));
-  translate(pos.x, pos.y, pos.z + 150 * bounceOffset);
+  translate(pos.x, pos.y, pos.z + 200 * bounceOffset);
   rotateZ(angle);
   const anglePos = 1 - cos((frame / (animationLength * 2)) * TWO_PI);
   rotateX(rotationCount * TWO_PI * anglePos);
   rotateZ(-angle);
-  drawCube(size * (1 - bounceOffset / 3), [
-    frame < animationLength / 2 ? startIndex : endIndex,
-    ...sideIndices,
-  ]);
+  drawCube(
+    lerp(startSize, endSize, frame / animationLength) * (1 - bounceOffset / 3),
+    [frame < animationLength / 2 ? startIndex : endIndex, ...sideIndices]
+  );
   pop();
 }
 
@@ -342,7 +341,7 @@ function bumpCube(frameStart, pos, size, index) {
   push();
   const frame = constrain(frameCount - frameStart, 0, animationLength);
   const bounceOffset = abs(sin((frame / (animationLength * 2)) * TWO_PI));
-  translate(pos.x, pos.y, pos.z + 50 * bounceOffset);
+  translate(pos.x, pos.y, pos.z + size * bounceOffset);
   drawCube(size, [index, 0, 0, 0, 0, 0]);
   pop();
 }
@@ -584,3 +583,5 @@ function drawSkull() {
   circle(-45, 10 + 3.5 * sin(deg + 2), 70);
   circle(5, 50 + 4 * sin(deg + 1.4), 30);
 }
+
+function drawWin() {}
