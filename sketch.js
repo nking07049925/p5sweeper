@@ -6,6 +6,8 @@
 
 const cellSize = 50;
 
+const bombsToGenerate = 20;
+
 /** @type {"START" | "PLAYING" | "DEAD" | "WIN"} */
 let gameState = "START";
 
@@ -203,7 +205,12 @@ function setup() {
  * p5js draw
  */
 function draw() {
-  brightColor = gameState == "DEAD" ? 128 : 255;
+  brightColor = 255;
+  tint(255);
+  if (["DEAD", "WIN"].includes(gameState)) {
+    brightColor = 128;
+    tint(128);
+  }
   background(0);
   const sizeX = countX * cellSize;
   const sizeY = countY * cellSize;
@@ -286,18 +293,17 @@ function mousePressed(event) {
     const clicked = findClicked(mouseX, mouseY);
     if (clicked) {
       if (gameState == "START") {
-        placeBombs(12, clicked.getCells());
+        placeBombs(bombsToGenerate, clicked.getCells());
         revealCells(clicked);
-        return;
-      }
-      if (mouseButton == LEFT) {
-        revealCells(clicked);
-
-        if (unrevealed.size == bombs.length) {
-          return win();
-        }
       } else {
-        clicked.flag(true);
+        if (mouseButton == LEFT) {
+          revealCells(clicked);
+        } else {
+          clicked.flag(true);
+        }
+      }
+      if (unrevealed.size == bombs.length) {
+        return win();
       }
     }
   } else {
@@ -566,6 +572,7 @@ function drawFlag(pos, size) {
 function drawSkull() {
   const deg = frameCount * 0.03;
 
+  push();
   translate(0, 0, 200);
 
   noStroke();
@@ -580,6 +587,42 @@ function drawSkull() {
   circle(45, -10 + 3 * sin(deg + 0.8), 70);
   circle(-45, 10 + 3.5 * sin(deg + 2), 70);
   circle(5, 50 + 4 * sin(deg + 1.4), 30);
+  pop();
 }
 
-function drawWin() {}
+function drawWin() {
+  const deg = frameCount * 0.03;
+
+  push();
+  translate(0, 0, 200);
+
+  noStroke();
+  fill(255);
+  push();
+  rotateZ(sin(deg + 0.8) * 0.03);
+  translate(0, 5 * sin(deg + 0.3));
+  triangle(-100, -80, 0, 50, -100, 50);
+  triangle(0, -80, -100, 50, 100, 50);
+  triangle(100, -80, 100, 50, 0, 50);
+  pop();
+
+  push();
+  rotateZ(sin(deg + 0.6) * 0.03);
+  circle(-100, -97 + 5 * sin(deg + 0.7), 20);
+  pop();
+
+  push();
+  rotateZ(sin(deg + 0.6) * 0.03);
+  circle(0, -97 + 5 * sin(deg + 0.5), 20);
+  pop();
+
+  push();
+  rotateZ(sin(deg + 0.6) * 0.03);
+  circle(100, -97 + 5 * sin(deg + 0.1), 20);
+  pop();
+
+  stroke(255);
+  strokeWeight(30);
+  line(-100, 80 + 5 * sin(deg), 100, 80 + 5 * sin(deg + 1.2));
+  pop();
+}
