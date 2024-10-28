@@ -252,9 +252,6 @@ function mousePressed(event) {
       if (mouseButton == LEFT) {
         revealCells(clicked);
 
-        if (clicked.hasBomb) {
-          return die();
-        }
         if (unrevealed.size == bombs.length) {
           return win();
         }
