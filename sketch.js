@@ -324,7 +324,7 @@ function rotateCube(
   push();
   const frame = constrain(frameCount - frameStart, 0, animationLength);
   const bounceOffset = abs(sin((frame / (animationLength * 2)) * TWO_PI));
-  translate(pos.x, pos.y, pos.z + 200 * bounceOffset);
+  translate(pos.x, pos.y, pos.z + endSize * 6 * bounceOffset);
   rotateZ(angle);
   const anglePos = 1 - cos((frame / (animationLength * 2)) * TWO_PI);
   rotateX(rotationCount * TWO_PI * anglePos);
