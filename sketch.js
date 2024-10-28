@@ -358,14 +358,6 @@ function generateCubeTexture() {
     const x = sideTextureSize * ((i % 3) - 1);
     const y = sideTextureSize * (Math.floor(i / 3) - 1);
     drawDie(i, createVector(x, y), sideTextureSize / 4, graphics);
-    graphics.noFill();
-    graphics.stroke(255);
-    graphics.rect(
-      x - sideTextureSize / 2,
-      y - sideTextureSize / 2,
-      sideTextureSize,
-      sideTextureSize
-    );
   }
 }
 
@@ -569,6 +561,8 @@ function drawFlag(pos, size) {
 
 function drawSkull() {
   const deg = frameCount * 0.03;
+
+  translate(0, 0, 200);
 
   noStroke();
   fill(255);
