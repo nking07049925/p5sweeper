@@ -13,6 +13,14 @@ let gameState = "START";
 let hovered = undefined;
 let brightColor = 255;
 
+/** @type {(animationStart: number) => boolean} */
+function inAnimation(animationStart) {
+  return (
+    frameCount > animationStart &&
+    frameCount <= animationStart + animationLength
+  );
+}
+
 class Cell {
   /** @param {Vector} pos */
   constructor(pos = createVector()) {
@@ -35,6 +43,7 @@ class Cell {
     this.revealStart = -animationLength;
     this.revealAngle = 0;
     this.revealSides = [];
+    this.bumpStart = -animationLength;
   }
 
   display() {
@@ -63,16 +72,7 @@ class Cell {
       fill(brightColor);
       drawBomb(center, size / 4);
     } else {
-      if (
-        frameCount < this.revealStart ||
-        frameCount > this.revealStart + animationLength
-      ) {
-        drawDie(
-          frameCount < this.revealStart ? 0 : this.bombCount,
-          center,
-          size / 4
-        );
-      } else {
+      if (inAnimation(this.revealStart)) {
         rotateCube(
           this.revealStart,
           createVector(size / 2, size / 2, -size / 2).add(this.pos),
@@ -81,6 +81,19 @@ class Cell {
           0,
           this.bombCount,
           this.revealSides
+        );
+      } else if (inAnimation(this.bumpStart)) {
+        bumpCube(
+          this.bumpStart,
+          createVector(size / 2, size / 2, -size / 2).add(this.pos),
+          size / 2,
+          this.bombCount
+        );
+      } else {
+        drawDie(
+          frameCount < this.revealStart ? 0 : this.bombCount,
+          center,
+          size / 4
         );
       }
     }
@@ -107,16 +120,18 @@ class Cell {
     });
   }
 
-  /** @type {(frameStart: number) => void} */
-  reveal(frameStart) {
+  /** @type {(frameStart: number, angle: number) => void} */
+  reveal(frameStart, angle) {
     if (this.flagged || this.revealed) {
+      if (this.bombCount && !inAnimation(this.bumpStart))
+        this.bumpStart = frameStart;
       return;
     }
 
     unrevealed.delete(this);
     this.revealed = true;
     this.revealStart = frameStart;
-    this.revealAngle = random(0, TWO_PI);
+    this.revealAngle = angle;
     this.revealSides = shuffle(
       [1, 2, 3, 4, 5, 6].filter((i) => i != this.bombCount)
     );
@@ -212,32 +227,54 @@ function draw() {
   if (gameState == "WIN") text("u da winer", 0, 0);
 }
 
+/** @type {(cell: Cell) => boolean} */
+function shouldPropagate(cell) {
+  // skip flagged
+  if (cell.flagged) return false;
+  // reveal neighbours only for empty cells
+  if (!cell.revealed) return !cell.bombCount;
+  // propagate via chording for cells with flag count
+  return !!cell.bombCount && cell.flagCount == cell.bombCount;
+}
+
+/** @type {(cell: Cell) => boolean} */
+function shouldVisit(cell) {
+  return !cell.flagged && (!cell.revealed || !!cell.bombCount);
+}
+
 /** @type {(origin: Cell) => void} */
 function revealCells(origin) {
-  /** @typedef {{ frame: number; cell: Cell }} VisitInfo*/
+  /** @typedef {{ frame: number; cell: Cell, angle: number }} VisitInfo*/
   /** @type {VisitInfo[]} */
-  const toVisit = [{ cell: origin, frame: frameCount }];
+  const toVisit = [{ cell: origin, frame: frameCount, angle: 0 }];
+  const toVisitSet = new Set([origin]);
   /** @type {Set<Cell>} */
   const visited = new Set();
   while (toVisit.length) {
     const current = toVisit.shift();
     if (!current) break;
-    const { cell, frame } = current;
+    const { cell, frame, angle } = current;
+    toVisitSet.delete(cell);
     visited.add(cell);
-    if (
-      (!cell.bombCount && !cell.revealed) ||
-      (cell.bombCount && cell.flagCount == cell.bombCount)
-    ) {
-      cell.neighbours.forEach(
-        (neighbour) =>
+    if (shouldPropagate(cell)) {
+      cell.neighbours.forEach((neighbour) => {
+        if (
           !visited.has(neighbour) &&
+          !toVisitSet.has(neighbour) &&
+          shouldVisit(neighbour)
+        ) {
+          toVisitSet.add(neighbour);
+          const dir = neighbour.pos.copy().sub(cell.pos);
           toVisit.push({
-            frame: frame + cell.pos.dist(neighbour.pos) / 4,
+            frame: frame + dir.mag() / 4,
+            angle: dir.heading(),
             cell: neighbour,
-          })
-      );
+          });
+        }
+      });
     }
-    cell.reveal(frame);
+    cell.reveal(frame, angle);
+    if (cell.hasBomb && !cell.flagged) return die();
   }
 }
 
@@ -297,6 +334,16 @@ function rotateCube(
     frame < animationLength / 2 ? startIndex : endIndex,
     ...sideIndices,
   ]);
+  pop();
+}
+
+/** @type {(frameStart: number, pos: Vector, size: number, index: number) => void} */
+function bumpCube(frameStart, pos, size, index) {
+  push();
+  const frame = constrain(frameCount - frameStart, 0, animationLength);
+  const bounceOffset = abs(sin((frame / (animationLength * 2)) * TWO_PI));
+  translate(pos.x, pos.y, pos.z + 50 * bounceOffset);
+  drawCube(size, [index, 0, 0, 0, 0, 0]);
   pop();
 }
 
